@@ -7706,6 +7706,7 @@ SYSCALL_DEFINE5(perf_event_open,
 	}
 
 	if (move_group) {
+<<<<<<< HEAD
 		gctx = __perf_event_ctx_lock_double(group_leader, ctx);
 
 		/*
@@ -7731,6 +7732,16 @@ SYSCALL_DEFINE5(perf_event_open,
 		 * See perf_event_ctx_lock() for comments on the details
 		 * of swizzling perf_event::ctx.
 		 */
+=======
+		gctx = group_leader->ctx;
+
+		/*
+		 * See perf_event_ctx_lock() for comments on the details
+		 * of swizzling perf_event::ctx.
+		 */
+		mutex_lock_double(&gctx->mutex, &ctx->mutex);
+
+>>>>>>> 33b738f... perf: Fix event->ctx locking
 		perf_remove_from_context(group_leader, false);
 
 		/*
@@ -7757,6 +7768,7 @@ SYSCALL_DEFINE5(perf_event_open,
 		 * the old lists, before installing it on new lists.
 		 */
 		synchronize_rcu();
+
 		perf_install_in_context(ctx, group_leader, group_leader->cpu);
 		get_ctx(ctx);
 		list_for_each_entry(sibling, &group_leader->sibling_list,
@@ -7770,7 +7782,11 @@ SYSCALL_DEFINE5(perf_event_open,
 	perf_unpin_context(ctx);
 
 	if (move_group) {
+<<<<<<< HEAD
 		perf_event_ctx_unlock(group_leader, gctx);
+=======
+		mutex_unlock(&gctx->mutex);
+>>>>>>> 33b738f... perf: Fix event->ctx locking
 		put_ctx(gctx);
 	}
 	mutex_unlock(&ctx->mutex);
