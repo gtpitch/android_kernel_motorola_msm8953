@@ -732,6 +732,8 @@ struct mdss_panel_info {
 	/* debugfs structure for the panel */
 	struct mdss_panel_debugfs_info *debugfs_info;
 
+	u32 disp_on_check_val;
+
 	/* HDR properties of display panel*/
 	struct mdss_panel_hdr_properties hdr_properties;
 };
