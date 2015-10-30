@@ -739,6 +739,8 @@ struct mdss_panel_info {
 
 	u32 disp_on_check_val;
 	bool no_panel_read_support;
+	u32 forced_tx_mode_ftr_enabled;
+	u32 forced_tx_mode_state;
 
 	/* HDR properties of display panel*/
 	struct mdss_panel_hdr_properties hdr_properties;
