@@ -146,12 +146,15 @@ static int print_mem_entry(void *data, void *ptr)
 	flags[8] = '\0';
 
 	kgsl_get_memory_usage(usage, sizeof(usage), m->flags);
+	if (usermem_type == KGSL_MEM_ENTRY_ION)
+		kgsl_get_egl_counts(entry, &egl_surface_count,
+				    &egl_image_count);
 
 	if (usermem_type == KGSL_MEM_ENTRY_ION)
 		kgsl_get_egl_counts(entry, &egl_surface_count,
 						&egl_image_count);
 
-	seq_printf(s, "%pK %pK %16llu %5d %9s %10s %16s %5d %16llu %6d %6d",
+	seq_printf(s, "%pK %pK %16llu %5d %9s %10s %16s %5d %16llu %3d %3d",
 			(uint64_t *)(uintptr_t) m->gpuaddr,
 			(unsigned long *) m->useraddr,
 			m->size, entry->id, flags,
