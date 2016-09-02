@@ -2402,6 +2402,8 @@ static int kgsl_setup_dma_buf(struct kgsl_device *device,
 		goto out;
 	}
 
+	attach->priv = entry;
+
 	meta->dmabuf = dmabuf;
 	meta->attach = attach;
 
@@ -2463,22 +2465,21 @@ void kgsl_get_egl_counts(struct kgsl_mem_entry *entry,
 {
 	struct kgsl_dma_buf_meta *meta = entry->priv_data;
 	struct dma_buf *dmabuf = meta->dmabuf;
-	struct dma_buf_attachment *mem_entry_buf_attachment = meta->attach;
-	struct device *buf_attachment_dev = mem_entry_buf_attachment->dev;
-	struct dma_buf_attachment *attachment = NULL;
+	struct device *dev = meta->attach->dev;
+	struct dma_buf_attachment *attach;
 
 	mutex_lock(&dmabuf->lock);
-	list_for_each_entry(attachment, &dmabuf->attachments, node) {
-		struct kgsl_mem_entry *scan_mem_entry = NULL;
+	list_for_each_entry(attach, &dmabuf->attachments, node) {
+		struct kgsl_mem_entry *entry_scan;
 
-		if (attachment->dev != buf_attachment_dev)
+		if (attach->dev != dev)
 			continue;
 
-		scan_mem_entry = attachment->priv;
-		if (!scan_mem_entry)
+		entry_scan = attach->priv;
+		if (!entry_scan)
 			continue;
 
-		switch (kgsl_memdesc_get_memtype(&scan_mem_entry->memdesc)) {
+		switch (kgsl_memdesc_get_memtype(&entry_scan->memdesc)) {
 		case KGSL_MEMTYPE_EGL_SURFACE:
 			(*egl_surface_count)++;
 			break;
