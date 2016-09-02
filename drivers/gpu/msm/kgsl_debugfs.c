@@ -144,6 +144,9 @@ static int print_mem_entry(struct seq_file *s, struct kgsl_mem_entry *entry)
 	flags[8] = '\0';
 
 	kgsl_get_memory_usage(usage, sizeof(usage), m->flags);
+	if (usermem_type == KGSL_MEM_ENTRY_ION)
+		kgsl_get_egl_counts(entry, &egl_surface_count,
+				    &egl_image_count);
 
 	if (usermem_type == KGSL_MEM_ENTRY_ION)
 		kgsl_get_egl_counts(entry, &egl_surface_count,
@@ -218,9 +221,9 @@ static void process_mem_seq_stop(struct seq_file *s, void *v)
 static int process_mem_seq_show(struct seq_file *s, void *v)
 {
 	if (v == SEQ_START_TOKEN)
-		seq_printf(s, "%16s %16s %16s %5s %9s %10s %16s %5s %16s\n",
+		seq_printf(s, "%16s %16s %16s %5s %9s %10s %16s %5s %16s %3s %3s\n",
 			   "gpuaddr", "useraddr", "size", "id", "flags", "type",
-			   "usage", "sglen", "mapsize");
+			   "usage", "sglen", "mapsize", "srf", "img");
 	else
 		print_mem_entry(s, v);
 
