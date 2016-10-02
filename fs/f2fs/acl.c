@@ -194,6 +194,11 @@ struct posix_acl *f2fs_get_acl(struct inode *inode, int type)
 	return acl;
 }
 
+struct posix_acl *f2fs_get_acl(struct inode *inode, int type)
+{
+	return __f2fs_get_acl(inode, type, NULL);
+}
+
 static int __f2fs_set_acl(struct inode *inode, int type,
 			struct posix_acl *acl, struct page *ipage)
 {
@@ -254,6 +259,135 @@ int f2fs_init_acl(struct inode *inode, struct inode *dir, struct page *ipage)
 	int error = 0;
 
 	error = posix_acl_create(dir, &inode->i_mode, &default_acl, &acl);
+/*
+ * Most part of f2fs_acl_clone, f2fs_acl_create_masq, f2fs_acl_create
+ * are copied from posix_acl.c
+ */
+static struct posix_acl *f2fs_acl_clone(const struct posix_acl *acl,
+							gfp_t flags)
+{
+	struct posix_acl *clone = NULL;
+
+	if (acl) {
+		int size = sizeof(struct posix_acl) + acl->a_count *
+				sizeof(struct posix_acl_entry);
+		clone = kmemdup(acl, size, flags);
+		if (clone)
+			atomic_set(&clone->a_refcount, 1);
+	}
+	return clone;
+}
+
+static int f2fs_acl_create_masq(struct posix_acl *acl, umode_t *mode_p)
+{
+	struct posix_acl_entry *pa, *pe;
+	struct posix_acl_entry *group_obj = NULL, *mask_obj = NULL;
+	umode_t mode = *mode_p;
+	int not_equiv = 0;
+
+	/* assert(atomic_read(acl->a_refcount) == 1); */
+
+	FOREACH_ACL_ENTRY(pa, acl, pe) {
+		switch(pa->e_tag) {
+		case ACL_USER_OBJ:
+			pa->e_perm &= (mode >> 6) | ~S_IRWXO;
+			mode &= (pa->e_perm << 6) | ~S_IRWXU;
+			break;
+
+		case ACL_USER:
+		case ACL_GROUP:
+			not_equiv = 1;
+			break;
+
+		case ACL_GROUP_OBJ:
+			group_obj = pa;
+			break;
+
+		case ACL_OTHER:
+			pa->e_perm &= mode | ~S_IRWXO;
+			mode &= pa->e_perm | ~S_IRWXO;
+			break;
+
+		case ACL_MASK:
+			mask_obj = pa;
+			not_equiv = 1;
+			break;
+
+		default:
+			return -EIO;
+		}
+	}
+
+	if (mask_obj) {
+		mask_obj->e_perm &= (mode >> 3) | ~S_IRWXO;
+		mode &= (mask_obj->e_perm << 3) | ~S_IRWXG;
+	} else {
+		if (!group_obj)
+			return -EIO;
+		group_obj->e_perm &= (mode >> 3) | ~S_IRWXO;
+		mode &= (group_obj->e_perm << 3) | ~S_IRWXG;
+	}
+
+	*mode_p = (*mode_p & ~S_IRWXUGO) | mode;
+        return not_equiv;
+}
+
+static int f2fs_acl_create(struct inode *dir, umode_t *mode,
+		struct posix_acl **default_acl, struct posix_acl **acl,
+		struct page *dpage)
+{
+	struct posix_acl *p;
+	struct posix_acl *clone;
+	int ret;
+
+	*acl = NULL;
+	*default_acl = NULL;
+
+	if (S_ISLNK(*mode) || !IS_POSIXACL(dir))
+		return 0;
+
+	p = __f2fs_get_acl(dir, ACL_TYPE_DEFAULT, dpage);
+	if (!p || p == ERR_PTR(-EOPNOTSUPP)) {
+		*mode &= ~current_umask();
+		return 0;
+	}
+	if (IS_ERR(p))
+		return PTR_ERR(p);
+
+	clone = f2fs_acl_clone(p, GFP_NOFS);
+	if (!clone)
+		goto no_mem;
+
+	ret = f2fs_acl_create_masq(clone, mode);
+	if (ret < 0)
+		goto no_mem_clone;
+
+	if (ret == 0)
+		posix_acl_release(clone);
+	else
+		*acl = clone;
+
+	if (!S_ISDIR(*mode))
+		posix_acl_release(p);
+	else
+		*default_acl = p;
+
+	return 0;
+
+no_mem_clone:
+	posix_acl_release(clone);
+no_mem:
+	posix_acl_release(p);
+	return -ENOMEM;
+}
+
+int f2fs_init_acl(struct inode *inode, struct inode *dir, struct page *ipage,
+							struct page *dpage)
+{
+	struct posix_acl *default_acl = NULL, *acl = NULL;
+	int error = 0;
+
+	error = f2fs_acl_create(dir, &inode->i_mode, &default_acl, &acl, dpage);
 	if (error)
 		return error;
 
