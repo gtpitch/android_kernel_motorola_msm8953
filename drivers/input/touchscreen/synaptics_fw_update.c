@@ -316,6 +316,22 @@ static bool in_bounds(unsigned long offset,
 	return 1;
 }
 
+/* Check offset + size <= bound.  1 if in bounds, 0 otherwise. */
+static bool in_bounds(unsigned long offset,
+		      unsigned long size,
+		      unsigned long bound)
+{
+	if (offset > bound || size > bound) {
+		pr_err("%s: %lu or %lu > %lu\n", __func__, offset, size, bound);
+		return 0;
+	}
+	if (offset > (bound - size)) {
+		pr_err("%s: %lu > %lu - %lu\n", __func__, offset, size, bound);
+		return 0;
+	}
+	return 1;
+}
+
 static unsigned int extract_uint(const unsigned char *ptr)
 {
 	return (unsigned int)ptr[0] +
@@ -411,7 +427,7 @@ static int parse_header(void)
 	}
 	/* get config offset*/
 	if (img->config_size) {
-		// FW_IMAGE_OFFSET + image_size was ok as above
+		/* FW_IMAGE_OFFSET + image_size was ok as above */
 		if (!in_bounds(FW_IMAGE_OFFSET + img->image_size,
 			       img->config_size, fwu->full_update_size)) {
 			dev_err(&fwu->rmi4_data->i2c_client->dev,
