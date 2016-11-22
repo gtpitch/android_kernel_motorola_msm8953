@@ -278,6 +278,7 @@ static int32_t msm_flash_i2c_init(
 			flash_ctrl->power_info.power_down_setting_size);
 		rc = -EINVAL;
 		goto msm_flash_i2c_init_fail;
+	}
 
 	rc = msm_camera_fill_vreg_params(
 			flash_ctrl->power_info.cam_vreg,
