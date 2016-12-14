@@ -311,20 +311,18 @@ static int modem_notifier_cb(struct notifier_block *this, unsigned long code,
 		break;
 
 	case SUBSYS_BEFORE_POWERUP:
-		if (_cmd) {
+		if (_cmd)
 			notifdata = (struct notif_data *) _cmd;
-		} else {
-			ramdump_event = 0;
+		else
 			break;
-		}
 
-		if (notifdata->enable_ramdump && ramdump_event) {
-			pr_info("memshare: %s, Ramdump collection is enabled\n",
+		if (!(notifdata->enable_ramdump)) {
+			pr_err("In %s, Ramdump collection is disabled\n",
 					__func__);
+		} else {
 			ret = mem_share_do_ramdump();
 			if (ret)
 				pr_err("Ramdump collection failed\n");
-			ramdump_event = 0;
 		}
 		break;
 
