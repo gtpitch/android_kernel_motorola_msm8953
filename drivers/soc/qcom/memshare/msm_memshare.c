@@ -306,10 +306,6 @@ static int modem_notifier_cb(struct notifier_block *this, unsigned long code,
 		bootup_request++;
 		break;
 
-	case SUBSYS_RAMDUMP_NOTIFICATION:
-		ramdump_event = 1;
-		break;
-
 	case SUBSYS_BEFORE_POWERUP:
 		if (_cmd) {
 			notifdata = (struct notif_data *) _cmd;
