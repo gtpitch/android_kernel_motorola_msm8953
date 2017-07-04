@@ -199,6 +199,14 @@ static void cmdq_dumpregs(struct cmdq_host *cq_host)
 {
 	struct mmc_host *mmc = cq_host->mmc;
 
+	MMC_TRACE(mmc,
+	"%s: 0x0C=0x%08x 0x10=0x%08x 0x14=0x%08x 0x18=0x%08x 0x28=0x%08x 0x2C=0x%08x 0x30=0x%08x 0x34=0x%08x 0x54=0x%08x 0x58=0x%08x 0x5C=0x%08x 0x48=0x%08x\n",
+	__func__, cmdq_readl(cq_host, CQCTL), cmdq_readl(cq_host, CQIS),
+	cmdq_readl(cq_host, CQISTE), cmdq_readl(cq_host, CQISGE),
+	cmdq_readl(cq_host, CQTDBR), cmdq_readl(cq_host, CQTCN),
+	cmdq_readl(cq_host, CQDQS), cmdq_readl(cq_host, CQDPT),
+	cmdq_readl(cq_host, CQTERRI), cmdq_readl(cq_host, CQCRI),
+	cmdq_readl(cq_host, CQCRA), cmdq_readl(cq_host, CQCRDCT));
 	pr_err(DRV_NAME ": ========== REGISTER DUMP (%s)==========\n",
 		mmc_hostname(mmc));
 
@@ -427,6 +435,7 @@ static int cmdq_enable(struct mmc_host *mmc)
 pm_ref_count:
 	cmdq_runtime_pm_put(cq_host);
 out:
+	MMC_TRACE(mmc, "%s: CQ enabled err: %d\n", __func__, err);
 	return err;
 }
 
@@ -444,6 +453,7 @@ static void cmdq_disable_nosync(struct mmc_host *mmc, bool soft)
 
 	cq_host->enabled = false;
 	mmc_host_set_cq_disable(mmc);
+	MMC_TRACE(mmc, "%s: CQ disabled\n", __func__);
 }
 
 static void cmdq_disable(struct mmc_host *mmc, bool soft)
@@ -529,8 +539,11 @@ static void cmdq_prep_task_desc(struct mmc_request *mrq,
 		BLK_COUNT(mrq->cmdq_req->data.blocks) |
 		BLK_ADDR((u64)mrq->cmdq_req->blk_addr);
 
-	mb();
-	local_irq_restore(flags);
+	MMC_TRACE(mrq->host,
+		"%s: Task: 0x%08x | Args: 0x%08x | cnt: 0x%08x\n", __func__,
+		lower_32_bits(*data),
+		upper_32_bits(*data),
+		mrq->cmdq_req->data.blocks);
 }
 
 static int cmdq_dma_map(struct mmc_host *host, struct mmc_request *mrq)
@@ -680,8 +693,11 @@ static void cmdq_prep_dcmd_desc(struct mmc_host *mmc,
 	local_irq_restore(flags);
 
 	cmdq_log_task_desc_history(cq_host, *task_desc, true);
-	pr_debug("cmdq: dcmd: cmd: %d timing: %d resp: %d\n",
-		mrq->cmd->opcode, timing, resp_type);
+	MMC_TRACE(mrq->host,
+		"%s: DCMD: Task: 0x%08x | Args: 0x%08x\n",
+		__func__,
+		lower_32_bits(*task_desc),
+		upper_32_bits(*task_desc));
 }
 
 static void cmdq_pm_qos_vote(struct sdhci_host *host, struct mmc_request *mrq)
@@ -760,6 +776,7 @@ ring_doorbell:
 		cmdq_dumpregs(cq_host);
 		BUG_ON(1);
 	}
+	MMC_TRACE(mmc, "%s: tag: %d\n", __func__, tag);
 	cmdq_writel(cq_host, 1 << tag, CQTDBR);
 	/* Commit the doorbell write immediately */
 	wmb();
@@ -802,6 +819,8 @@ irqreturn_t cmdq_irq(struct mmc_host *mmc, int err)
 
 	if (!status && !err)
 		return IRQ_NONE;
+	MMC_TRACE(mmc, "%s: CQIS: 0x%x err: %d\n",
+		__func__, status, err);
 
 	if (err || (status & CQIS_RED)) {
 		err_info = cmdq_readl(cq_host, CQTERRI);
@@ -934,10 +953,17 @@ skip_cqterri:
 		 * before setting doorbell, hence one is not needed here.
 		 */
 		for_each_set_bit(tag, &comp_status, cq_host->num_slots) {
-			/* complete the corresponding mrq */
-			pr_debug("%s: completing tag -> %lu\n",
-				 mmc_hostname(mmc), tag);
-			cmdq_finish_data(mmc, tag);
+			mrq = get_req_by_tag(cq_host, tag);
+			if (!((mrq->cmd && mrq->cmd->error) ||
+					mrq->cmdq_req->resp_err ||
+					(mrq->data && mrq->data->error))) {
+				/* complete the corresponding mrq */
+				pr_debug("%s: completing tag -> %lu\n",
+					 mmc_hostname(mmc), tag);
+				MMC_TRACE(mmc, "%s: completing tag -> %lu\n",
+					__func__, tag);
+				cmdq_finish_data(mmc, tag);
+			}
 		}
 	}
 
@@ -1015,6 +1041,8 @@ static int cmdq_halt(struct mmc_host *mmc, bool halt)
 				retries--;
 				continue;
 			} else {
+				MMC_TRACE(mmc, "%s: halt done , retries: %d\n",
+					__func__, retries);
 				/* halt done: re-enable legacy interrupts */
 				if (cq_host->ops->clear_set_irqs)
 					cq_host->ops->clear_set_irqs(mmc,
@@ -1034,8 +1062,7 @@ static int cmdq_halt(struct mmc_host *mmc, bool halt)
 			cq_host->ops->set_data_timeout(mmc, 0xf);
 		if (cq_host->ops->clear_set_irqs)
 			cq_host->ops->clear_set_irqs(mmc, true);
-		/* clear the halt flag before we enable cmdq */
-		mmc_host_clr_halt(mmc);
+		MMC_TRACE(mmc, "%s: unhalt done\n", __func__);
 		cmdq_writel(cq_host, cmdq_readl(cq_host, CQCTL) & ~HALT,
 			    CQCTL);
 		local_irq_restore(flags);
